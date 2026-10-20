@@ -47,7 +47,7 @@ DEADZONE = 0.08
 V_DEMAND_MAX = 20.0           # m/s que pide RT a fondo (el Guardian recorta a 13.89)
 V_REVERSE_MAX = 3.0           # m/s máximo en reversa
 W_MAX = 0.8                   # rad/s que pide el stick a fondo (el Guardian lo limita a 0.3 g)
-RELEASE_DECEL = 3.0           # m/s^2: cuánto baja la demanda al soltar RT (evita frenazo)
+RELEASE_DECEL = 1.0           # m/s^2: cuánto baja la demanda al soltar RT (evita frenazo)
 
 CMD_TIMEOUT = 0.2             # s sin safe_cmd_vel -> el coche frena
 NO_OBSTACLE = 1000.0          # m
