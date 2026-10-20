@@ -131,7 +131,7 @@ class SpeedController:
 
         if v_cmd == 0.0:                      # parada / AEB
             self.int_err = 0.0
-            ctrl.brake = 1.0 if abs(v_fwd) > 0.1 else 0.5
+            ctrl.brake = 1.0 if abs(v_fwd) > 0.1 else 0.0 # freno fuerte si aún se mueve, freno suave si ya está parado. valor de 0.5 si si lo queremos
         elif v_meas < -0.3:                   # va en sentido contrario: frenar primero
             self.int_err = 0.0
             ctrl.brake = 1.0
