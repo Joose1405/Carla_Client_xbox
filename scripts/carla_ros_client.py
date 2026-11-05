@@ -36,7 +36,7 @@ import pygame
 import rclpy
 from geometry_msgs.msg import Point, Twist
 from rclpy.node import Node
-from std_msgs.msg import Float32
+from std_msgs.msg import Float32, String
 
 # ------------------------- configuración -------------------------
 WIDTH, HEIGHT = 1280, 720
@@ -47,7 +47,7 @@ DEADZONE = 0.08
 V_DEMAND_MAX = 20.0           # m/s que pide RT a fondo (el Guardian recorta a 13.89)
 V_REVERSE_MAX = 3.0           # m/s máximo en reversa
 W_MAX = 0.8                   # rad/s que pide el stick a fondo (el Guardian lo limita a 0.3 g)
-RELEASE_DECEL = 1.0           # m/s^2: cuánto baja la demanda al soltar RT (evita frenazo)
+RELEASE_DECEL = 3.0           # m/s^2: cuánto baja la demanda al soltar RT (evita frenazo)
 
 CMD_TIMEOUT = 0.2             # s sin safe_cmd_vel -> el coche frena
 NO_OBSTACLE = 1000.0          # m
@@ -131,7 +131,7 @@ class SpeedController:
 
         if v_cmd == 0.0:                      # parada / AEB
             self.int_err = 0.0
-            ctrl.brake = 1.0 if abs(v_fwd) > 0.1 else 0.0 # freno fuerte si aún se mueve, freno suave si ya está parado. valor de 0.5 si si lo queremos
+            ctrl.brake = 1.0 if abs(v_fwd) > 0.1 else 0.5
         elif v_meas < -0.3:                   # va en sentido contrario: frenar primero
             self.int_err = 0.0
             ctrl.brake = 1.0
@@ -161,14 +161,24 @@ class GuardianLink(Node):
         self.pub_speed = self.create_publisher(Float32, '/vehicle/speedometer', 10)
         self.pub_obs = self.create_publisher(Point, '/perception/lead_obstacle', 10)
         self.create_subscription(Twist, '/vehicle/safe_cmd_vel', self._safe_cb, 10)
+        self.create_subscription(String, '/guardian/alert', self._alert_cb, 10)
         self.safe_v = 0.0
         self.safe_w = 0.0
         self._safe_stamp = None
+        self.alert_text = ''
+        self._alert_stamp = None
 
     def _safe_cb(self, msg):
         self.safe_v = msg.linear.x
         self.safe_w = msg.angular.z
         self._safe_stamp = time.monotonic()
+
+    def _alert_cb(self, msg):
+        self.alert_text = msg.data
+        self._alert_stamp = time.monotonic()
+
+    def alert_age(self):
+        return float('inf') if self._alert_stamp is None else time.monotonic() - self._alert_stamp
 
     def safe_age(self):
         return float('inf') if self._safe_stamp is None else time.monotonic() - self._safe_stamp
@@ -313,6 +323,8 @@ def main():
         v_raw = w_raw = 0.0
         info = None
         white, red, green = (255, 255, 255), (255, 90, 90), (120, 255, 120)
+        yellow = (255, 220, 90)
+        ALERT_SHOW_S = 2.0        # el Guardian repite la alerta cada 1 s mientras persiste
 
         while True:
             clock.tick(FPS)
@@ -410,6 +422,14 @@ def main():
                 lead_col = red if (ttc is not None and ttc < 1.5) else white
             else:
                 lead_txt, lead_col = 'Lead: sin obstaculo en el carril', white
+            if args.bypass_guardian:
+                guard = ('Guardian: (bypass)', white)
+            elif node.alert_age() <= ALERT_SHOW_S:
+                txt = node.alert_text
+                guard = (f'Guardian: {txt[:90]}',
+                         red if txt.startswith(('EMERGENCY', 'CRITICAL')) else yellow)
+            else:
+                guard = ('Guardian: sin intervencion', green)
             lines = [
                 (f'Vehicle: {vehicle_name}', white),
                 (f'Map: {map_name}', white),
@@ -420,6 +440,7 @@ def main():
                 (f'raw  v={v_raw:+6.2f} m/s  w={w_raw:+5.2f} rad/s', white),
                 (f'safe v={node.safe_v:+6.2f} m/s  w={node.safe_w:+5.2f} rad/s', white),
                 (lead_txt, lead_col),
+                guard,
                 (f'acel {ctrl.throttle:.2f}  freno {ctrl.brake:.2f}  dir {ctrl.steer:+.2f}', white),
             ]
             for i, (text, color) in enumerate(lines):
